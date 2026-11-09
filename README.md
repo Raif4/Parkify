@@ -1,7 +1,7 @@
 # Parkify: Live Parking Slot Detection
 
 **Maker Challenge 2026 entry, CFAL Makers' Fete**
-**Team Axiom Labs:** Raif, Anvesh, Disha
+**Team Axiom Labs:** Raif, Anwesh.
 
 > Know whether a parking slot is free before you reach it: on the entrance sign and on your phone.
 
