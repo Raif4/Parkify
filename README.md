@@ -1,69 +1,79 @@
-# Parkify: Live Parking Slot Detection
+# Parkify
 
-**Maker Challenge 2026 entry, CFAL Makers' Fete**
-**Team Axiom Labs:** Raif, Anwesh.
 
-> Know whether a parking slot is free before you reach it: on the entrance sign and on your phone.
+![Parkify app icon](app/assets/icon/icon.png)
 
----
+**A two-slot smart-parking prototype combining magnetic sensing, an entrance display, and a Flutter app.**
 
-## 1. Project title
+Maker Challenge 2026 · CFAL Makers' Fete · Team Axiom Labs: Raif and Anwesh
 
-**Parkify: a magnetic parking slot sensor system with a live entrance sign and a phone app**
+[![Platform: ESP8266](https://img.shields.io/badge/platform-ESP8266-3776AB)](https://www.espressif.com/en/products/socs/esp8266)
+[![App: Flutter](https://img.shields.io/badge/app-Flutter-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
+[![Prototype: 2 slots](https://img.shields.io/badge/prototype-2%20slots-34495E)](#current-scope-and-limitations)
 
-## 2. Brief description / objective
+Parkify detects whether a parking space is occupied by measuring changes in the local magnetic field. Two ESP8266 sensor pucks send slot states to a gateway over ESP-NOW. The gateway updates a MAX7219 LED matrix and serves a small HTTP API to the Android app over the local Wi-Fi network.
 
-**The problem.** In a busy mall, drivers circle the basement hunting for a free slot, and they have no way of knowing from home whether there is any parking at all. Malls often solve this by paying attendants to guide cars.
+> **Project status:** Maker Challenge prototype. The hardware and app are configured for two live slots. This repository does not include a cloud service or production deployment setup.
 
-**What Parkify does.** A small sensor "puck" sits in every parking slot. It measures the magnetic field around it. A parked vehicle (steel body and engine) disturbs that field, and the puck detects the change. Each puck sends its state wirelessly to a gateway, which:
+## At a glance
 
-- drives an LED sign at the mall entrance (a tick for a free slot, a cross for a taken one),
-- serves live slot data over the local network to the Parkify phone app.
+- **Sensors:** QMC5883P (slot 1) and QMC5883L (slot 2)
+- **Radio:** ESP-NOW on Wi-Fi channel 6
+- **Gateway:** ESP8266 with a fixed local IP and HTTP status/recalibration endpoints
+- **Display:** MAX7219 FC-16 32×8 LED matrix
+- **App:** Flutter Android app; demo mode is enabled by default
+- **Network:** Local Wi-Fi only; internet access is not required for the prototype
 
-This prototype has two slots and is built to scale to more.
+## How it works
 
-## 3. Materials and components
+```mermaid
+flowchart LR
+    P1[Slot 1 puck<br/>QMC5883P] -->|ESP-NOW, channel 6| GW[ESP8266 gateway]
+    P2[Slot 2 puck<br/>QMC5883L] -->|ESP-NOW, channel 6| GW
+    GW -->|SPI| LED[MAX7219 entrance sign]
+    GW -->|HTTP on local Wi-Fi| APP[Parkify Android app]
+```
 
-| Part | Qty | Used for |
-|---|---|---|
-| ESP8266 NodeMCU | 3 | 1 per puck (x2); 1 is the gateway, which also drives the LED matrix sign |
-| Magnetometer module, QMC5883P (I2C 0x2C) | 1 | Puck 1 sensor |
-| Magnetometer module, QMC5883L (I2C 0x0D) | 1 | Puck 2 sensor |
-| MAX7219 4-in-1 LED matrix (FC-16, 32x8, red) | 1 | Entrance sign |
-| Power banks | 3 | Power for each puck and the gateway |
-| Old Wi-Fi router (no internet needed) | 1 | Local network |
+Each puck records an empty-slot baseline at startup. It compares the current magnetic-field magnitude with that baseline and applies separate occupied/free thresholds to reduce state flicker. The gateway displays a tick for a free slot and a cross for an occupied slot, and exposes the latest states to the app.
+
+## Repository layout
+
+```text
+firmware/
+  gateway.ino       ESP8266 gateway, LED sign, and HTTP API
+  puck1.ino         Slot 1 firmware for QMC5883P (I²C 0x2C)
+  puck2.ino         Slot 2 firmware for QMC5883L (I²C 0x0D)
+app/
+  lib/              Flutter application source
+  assets/           Fonts and app artwork
+  android/          Android project files
+```
+
+## Hardware
+
+| Component | Quantity | Purpose |
+|---|---:|---|
+| ESP8266 NodeMCU | 3 | Two sensor pucks and one gateway |
+| QMC5883P magnetometer | 1 | Slot 1 sensor, I²C address `0x2C` |
+| QMC5883L magnetometer | 1 | Slot 2 sensor, I²C address `0x0D` |
+| MAX7219 FC-16 32×8 matrix | 1 | Gateway-driven entrance sign |
+| Local Wi-Fi router | 1 | Network between gateway and phone |
 | Android phone | 1 | Runs the Parkify app |
-| Jumper wires | - | Wiring |
-| 3D-printed puck enclosures | 2 | Housing, designed in OpenSCAD |
-| Tray and ramp board, entrance wall board, printed sticker vinyl | - | Demo set |
-| Toy RC car with a magnet underneath | 1 | Demo vehicle |
 
-**Tools and software:** 3D printer, craft knife and saw, Arduino IDE, OpenSCAD, Flutter, a laptop.
+### Sensor wiring
 
-## 4. Step-by-step build
+Use the same NodeMCU wiring for each puck:
 
-**Step 1: Sensor and microcontroller.** Wire each magnetometer to an ESP8266.
-
-| Sensor pin | NodeMCU pin |
+| Magnetometer | NodeMCU |
 |---|---|
 | VCC | 3V3 |
 | GND | GND |
 | SDA | D2 |
 | SCL | D1 |
 
-**Step 2: Identify the chips.** The two modules look identical but contain different chips. An I2C scan found address `0x2C` on one and `0x0D` on the other, so each puck has its own firmware setup.
+### LED matrix wiring
 
-**Step 3: Puck enclosures.** The puck body was designed in OpenSCAD, with a lid carrying the P logo and the name Parkify, and a side hole for the power cable. Printed on a 3D printer.
-
-**Step 4: Detection firmware.** On power-up each puck measures the magnetic field of the empty slot for a few seconds (the baseline), then watches for a change. Details in section 5.
-
-**Step 5: Wireless link.** Pucks send their state to the gateway using ESP-NOW, a direct radio link between ESP boards that needs no Wi-Fi connection at the slot.
-
-**Step 6: Gateway.** A third ESP8266 receives the pucks' messages and joins the router with a fixed IP address. It serves a small web API (see section 5).
-
-**Step 7: Entrance sign.** The LED matrix connects to the gateway.
-
-| Matrix pin | NodeMCU pin |
+| MAX7219 matrix | Gateway NodeMCU |
 |---|---|
 | VCC | VIN |
 | GND | GND |
@@ -71,15 +81,85 @@ This prototype has two slots and is built to scale to more.
 | CLK | D5 |
 | CS | D2 |
 
-It shows `P`, the slot numbers, and a blinking tick for free or a solid cross for taken. A short scrolling message (for example `SLOT 2 FREE` or `FULL`) plays periodically.
+## Build and configure
 
-**Step 8: Phone app.** A Flutter app polls the gateway and shows each slot live, with a Recalibrate button.
+### 1. Prepare the firmware environment
 
-**Step 9: Demo set.** A tray with a divider for two slots, a ramp, and a removable entrance wall that carries the LED sign. The wall stands between two rail strips, so it can be lifted out. The toy car carries a magnet underneath and is placed over each puck by hand.
+Install the ESP8266 board package in Arduino IDE and select the NodeMCU ESP8266 board. Install the **MD_Parola** and **MD_MAX72XX** libraries for the gateway sketch. The puck sketches use the ESP8266 core's ESP-NOW and I²C support.
 
-## 5. Working explanation and code
+Open each `.ino` file from `firmware/` as its own sketch. Upload `puck1.ino` and `puck2.ino` to their respective sensor boards, then upload `gateway.ino` to the board connected to the matrix.
 
-### System overview
+### 2. Configure the local network
 
-The gateway ESP8266 does three jobs: it receives the pucks' ESP-NOW messages, drives the LED matrix entrance sign, and joins the local Wi-Fi router so phones can read the slot data. The router needs no internet connection.
+Before uploading the gateway sketch, set the network values near the top of `firmware/gateway.ino`:
 
+- `WIFI_SSID` and `WIFI_PASS`: credentials for the local router
+- `GW_IP`, `ROUTER_IP`, and `SUBNET`: addresses that match the router's network
+
+The defaults are gateway `192.168.1.50`, router `192.168.1.1`, and subnet `255.255.255.0`. Change them if your router uses a different network. If you change the gateway IP, also update `gatewayUrl` and the recalibration URL in `app/lib/controller.dart`.
+
+The pucks are configured for channel 6 (`WIFI_CH`). Set the router's 2.4 GHz network to channel 6, and keep the gateway and both pucks on that channel so ESP-NOW messages can reach the gateway. The puck sketches contain a `GATEWAY_MAC` value; it must match the gateway board's station MAC address. The gateway prints its MAC, channel, and IP address to the Serial Monitor at 115200 baud.
+
+**Keep real Wi-Fi credentials out of source control.** The committed gateway sketch contains placeholders. Replace them only in your local working copy.
+
+### 3. Calibrate and tune the sensors
+
+On startup, each puck averages readings while the slot is empty. Keep the sensor still and move the car and magnets away during calibration. The current firmware uses `T_ON = 8 µT` and `T_OFF = 4 µT`, with 60 ms occupied and 400 ms free confirmation periods. These are starting values; tune them against the actual sensor placement and demo vehicle.
+
+To recalibrate, use the app's **Recalibrate** control or type `c` in the puck's Serial Monitor. Recalibration requires the slot to be empty.
+
+### 4. Run the Android app
+
+Install a Flutter SDK compatible with the constraints in `app/pubspec.yaml`, connect an Android phone to the same local network, then run:
+
+```bash
+cd app
+flutter pub get
+flutter run
+```
+
+The app starts in **Demo mode**. Turn Demo mode off in the app's hardware/developer settings to read live gateway data. The Android manifest permits cleartext HTTP because the ESP8266 serves HTTP on the local network; this prototype does not provide TLS or API authentication.
+
+## Gateway API
+
+| Request | Response / behavior |
+|---|---|
+| `GET /status` | Returns slot states and the free-slot count as JSON. |
+| `GET /recalibrate?slot=1` | Requests recalibration for slot 1. |
+| `GET /recalibrate?slot=2` | Requests recalibration for slot 2. |
+| `GET /recalibrate?slot=0` | Broadcasts a recalibration request to both pucks. |
+
+Example status response:
+
+```json
+{"slots":[{"id":1,"taken":false},{"id":2,"taken":true}],"free":1}
+```
+
+You can check the endpoint from a browser on the same network at `http://192.168.1.50/status`, provided the gateway is using its default IP address.
+
+## Current scope and limitations
+
+- The firmware, status response, and app's live polling are configured for two slots.
+- Only the Nexus Mall entry in the app is marked as the live pilot; other listed locations are placeholders and are not connected to sensors.
+- The gateway uses a fixed local IP address and the puck firmware is configured for Wi-Fi channel 6.
+- The app communicates with the gateway over unauthenticated HTTP on the local network. This setup is for a controlled prototype, not an internet-facing or production deployment.
+- Magnetic thresholds depend on the sensor, enclosure, nearby metal, and vehicle. Field calibration and testing are required for each installation.
+- No license has been selected for this repository. Contact the team before reusing or redistributing the code.
+
+## Troubleshooting
+
+| Symptom | Checks |
+|---|---|
+| App shows the gateway as offline | Confirm Demo mode is off, phone and gateway are on the same network, and the configured gateway IP matches `controller.dart`. Open `/status` from the phone's browser. |
+| Puck state never reaches the gateway | Confirm the router's 2.4 GHz channel is 6, `GATEWAY_MAC` matches the gateway station MAC, and the gateway joins Wi-Fi successfully. |
+| Slot state flickers or triggers too easily | Recalibrate with the slot empty; then tune `T_ON`, `T_OFF`, `ON_MS`, and `OFF_MS` for the physical setup. |
+| Sensor initialization fails | Check 3V3/GND and I²C wiring, then verify that the sensor address and sketch match the module (slot 1: `0x2C`; slot 2: `0x0D`). |
+| LED matrix is blank or mirrored | Check VIN, GND, DIN, CLK, and CS wiring; review `HW_TYPE` and `FLIP` in `gateway.ino`. |
+
+## Contributing
+
+Issues and focused pull requests are welcome. Include the affected board or app screen, steps to reproduce, expected behavior, and relevant error output. Remove Wi-Fi passwords and other private credentials before sharing logs or configuration.
+
+## Credits
+
+Built by Team Axiom Labs — Raif and Anwesh — for the Maker Challenge 2026 at CFAL Makers' Fete.
